@@ -1,6 +1,6 @@
 import unittest
 import functools
-import text_processing
+from util import text_processing
 
 test_sheet_is_hangul = [
     {'args': '파', 'return': True}, {'args': '이', 'return': True}, {'args': '썬', 'return': True}, {'args': '에', 'return': True},

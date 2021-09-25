@@ -1,7 +1,7 @@
 """
 Writer : Team  Murphy-s-rule (Team Nandoc)
 
-This module contain functions or methods to process text for label in dataset or output of model.
+This module contain functions or methods to process text for label in datasets or output of model.
 To generate HTML documentation for this module issue the command:
 
     pydoc -w util/text_processing.py
@@ -11,7 +11,7 @@ To generate HTML documentation for this module issue the command:
 from enum import Enum
 import re
 from jamo import h2j, j2hcj
-from unicode import join_jamos
+from util.unicode import join_jamos
 
 class HangulTokenType(Enum):
     """
@@ -47,7 +47,8 @@ map_token_to_num = {
     '0': 125, '1': 126, '2': 127, '3': 128, '4': 129, '5': 130, '6': 131, '7': 132, '8': 133, '9': 134,
     '!': 135, '@': 136, '#': 137, '$': 138, '%': 139, '^': 140, '&': 141, '*': 142, '(': 143, ')': 144, '-': 145,
     '_': 146, '=': 147, '+': 148, '[': 149, ']': 150, '{': 151, '}': 152, '\\': 153, '|': 154, ':': 155, ';': 156,
-    "'": 157, '"': 158, ',': 159, '.': 160, '<': 161, '>': 162, '/': 163, '?': 164, ' ': 165
+    "'": 157, '"': 158, ',': 159, '.': 160, '<': 161, '>': 162, '/': 163, '?': 164, ' ': 165, '`': 166, '~': 167,
+    '•': 168, '<unk>': 169,
 }
 
 map_num_to_token = [
@@ -56,14 +57,13 @@ map_num_to_token = [
     'ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ',
     'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅄ', 'ㅅ',
     'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
-
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w',
     'x', 'y', 'z',
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W',
     'X', 'Y', 'Z',
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
     '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '_', '=', '+', '[', ']', '{', '}', '\\', '|', ':', ';', "'",
-    '"', ',', '.', '<', '>', '/', '?', ' '
+    '"', ',', '.', '<', '>', '/', '?', ' ', '`', '~', '•', '<unk>'
 ]
 
 def isHangul(token):
@@ -110,7 +110,7 @@ def tokenize_text(text):
         Returns:
             list(str): The tokens from input text
     """
-    return ['<sos>'] + list(text) + ['<eos>']
+    return ['<sos>'] + ['<unk>' if token in ['油','脂','鑛','®'] else token for token in list(text)] + ['<eos>']
 
 def split_nums(nums):
     """
@@ -143,6 +143,8 @@ def text_to_nums(text):
         Returns:
             list(int): The numbers converted from tokens of text
     """
+    text = text.replace('‚',',')
+    text = text.replace('․','.')
     nums = []
     for token in tokenize_text(text):
         nums.extend(token_to_num(token))
@@ -161,4 +163,3 @@ def nums_to_text(nums):
             str: The text converted from number sequence
     """
     return ''.join([num_to_token(num_splited) for num_splited in split_nums(nums)][1:-1])
-
