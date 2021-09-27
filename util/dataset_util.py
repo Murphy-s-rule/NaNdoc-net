@@ -64,8 +64,11 @@ def get_tokenize_label_func(tokenizer: tftx.Tokenizer,is_sequence_padding: bool,
         'cannot return tokenize label function. because is_sequence_padding is true but max_seq_length is None'
     def tokenize_label(image, label):
         label = tokenizer.tokenize(label)
+        label = label.to_tensor()
         if is_sequence_padding:
-            label = tftx.pad_model_inputs(label, max_seq_length=max_seq_length)
+            label, mask = tftx.pad_model_inputs(label, max_seq_length=max_seq_length)
+
+
 
         return image, label
 

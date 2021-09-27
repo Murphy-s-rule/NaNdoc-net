@@ -12,6 +12,9 @@ from enum import Enum
 import re
 from jamo import h2j, j2hcj
 from util.unicode import join_jamos
+from tensorflow_text.python.ops.tokenization import Detokenizer
+from tensorflow_text.python.ops.tokenization import Tokenizer
+import tensorflow as tf
 
 class HangulTokenType(Enum):
     """
@@ -163,3 +166,12 @@ def nums_to_text(nums):
             str: The text converted from number sequence
     """
     return ''.join([num_to_token(num_splited) for num_splited in split_nums(nums)][1:-1])
+
+class HangulTokenizer(Tokenizer, Detokenizer):
+    def tokenize(self, input):
+        nums = text_to_nums(input)
+        return tf.RaggedTensor(values=[nums])
+    def detokenize(self, input):
+        nums = input.to_list()
+        return nums_to_text(nums)
+

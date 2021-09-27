@@ -7,8 +7,8 @@ def build_batch_pipeline(dataset_name,
                          split: str,
                          buffer_size: int,
                          batch_size: int,
-                         functions_before_batch: list,
-                         functions_after_batch: list):
+                         functions_before_batch: list = [],
+                         functions_after_batch: list = []):
 
 
     dataset = tfds.load(dataset_name, split=split, as_supervised=True)
