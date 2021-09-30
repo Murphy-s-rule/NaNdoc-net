@@ -1,6 +1,7 @@
-import tensorflow_datasets as tfds
 import tensorflow as tf
 import tensorflow_text as tftx
+from util import text_processing
+import csv
 
 def get_resize_image_func(height,width,is_normalize_pixel,normalization_value=None):
     """
@@ -73,3 +74,18 @@ def get_tokenize_label_func(tokenizer: tftx.Tokenizer,is_sequence_padding: bool,
         return image, label
 
     return tokenize_label
+
+@tf.function
+def get_load_image_func():
+    def load_image(image_path,label):
+        print(image_path.to_list())
+        img = tf.io.read_file(image_path)
+        img = tf.image.decode_jpeg(img, channels=3)
+        return img, label
+    return load_image
+
+def get_max_len_label_tokens(path):
+    with path.open() as f:
+        token_lens = [len(text_processing.HangulTokenizer().tokenize(row['label'])) for row in csv.DictReader(f)]
+
+    return max(token_lens)

@@ -14,7 +14,6 @@ from jamo import h2j, j2hcj
 from util.unicode import join_jamos
 from tensorflow_text.python.ops.tokenization import Detokenizer
 from tensorflow_text.python.ops.tokenization import Tokenizer
-import tensorflow as tf
 
 class HangulTokenType(Enum):
     """
@@ -28,7 +27,7 @@ class HangulTokenType(Enum):
     CODA = 2
 
 map_token_to_num = {
-    '<sos>': 0, '<pad>': 1,'<eos>': 2,
+    '<pad>': 0, '<sos>': 1, '<eos>': 2,
     HangulTokenType.ONSET: {
         'ㄱ':  3, 'ㄲ':  4, 'ㄴ':  5, 'ㄷ':  6, 'ㄸ':  7, 'ㄹ':  8, 'ㅁ':  9, 'ㅂ': 10, 'ㅃ': 11, 'ㅅ': 12, 'ㅆ': 13,
         'ㅇ': 14, 'ㅈ': 15, 'ㅉ': 16, 'ㅊ': 17, 'ㅋ': 18, 'ㅌ': 19, 'ㅍ': 20, 'ㅎ': 21},
@@ -55,7 +54,7 @@ map_token_to_num = {
 }
 
 map_num_to_token = [
-    '<sos>', '<pad>', '<eos>',
+    '<pad>', '<sos>', '<eos>',
     'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
     'ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ',
     'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅄ', 'ㅅ',
@@ -113,7 +112,7 @@ def tokenize_text(text):
         Returns:
             list(str): The tokens from input text
     """
-    return ['<sos>'] + ['<unk>' if token in ['油','脂','鑛','®'] else token for token in list(text)] + ['<eos>']
+    return ['<sos>'] + [token if token in map_num_to_token or isHangul(token) else '<unk>' for token in list(text)] + ['<eos>']
 
 def split_nums(nums):
     """
@@ -168,9 +167,13 @@ def nums_to_text(nums):
     return ''.join([num_to_token(num_splited) for num_splited in split_nums(nums)][1:-1])
 
 class HangulTokenizer(Tokenizer, Detokenizer):
-    def tokenize(self, input):
+    char_size = len(map_num_to_token)
+    def tokenize(self, input, max_length=None):
         nums = text_to_nums(input)
-        return tf.RaggedTensor(values=[nums])
+        if max_length:
+            margin_length = max_length - len(nums)
+            nums = nums + (token_to_num('<pad>') * margin_length) if max_length > 0 else nums[:margin_length]
+        return nums
     def detokenize(self, input):
         nums = input.to_list()
         return nums_to_text(nums)

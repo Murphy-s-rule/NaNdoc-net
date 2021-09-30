@@ -4,18 +4,24 @@ from tensorflow.keras.applications import efficientnet
 from tensorflow.keras import layers
 import numpy as np
 import time
+
+from datasets.dataset import build_batch_pipeline
 from util import dataset_util
 from datasets import dataset
 from tensorflow_text import UnicodeCharTokenizer
+from datasets.snukb import snukb
+from util.text_processing import HangulTokenizer
 
 BUFFER_SIZE = 2000
 BATCH_SIZE = 32
-MAX_SEQ_LENGTH = 50
+
+tokenizer = HangulTokenizer()
+
 
 image_size = (380,380)
 input_shape = image_size + (3,)
 
-target_char_size = 60000
+target_char_size = tokenizer.char_size
 num_layers = 4
 d_model = 128
 dff = 512
@@ -23,30 +29,9 @@ num_heads = 8
 
 dropout_rate = 0.1
 
-tokenizer = UnicodeCharTokenizer()
+dataset_train_path = 'datasets/snukb/dataset/train'
 
 
-feature_extractor = EfficientNetB5(include_top=False,
-                                   weights='imagenet')
-
-inputs = tf.keras.Input(shape=input_shape)
-inputs = efficientnet.preprocess_input(inputs)
-x = feature_extractor(inputs,training=False)
-
-pooling = layers.MaxPooling2D((2, 2))
-x = pooling(x)
-x = layers.Reshape((pooling.output_shape[1]*pooling.output_shape[2],pooling.output_shape[3]))(x)
-outputs = layers.Dense(d_model)(x)
-
-feature_extract_model = tf.keras.Model(inputs, outputs)
-
-seq_input = tf.keras.Input(shape=(50,))
-embedding = tf.keras.layers.Embedding(target_char_size, d_model)
-embedded_vec = embedding(seq_input)
-
-
-feature_extract_model.summary()
-tf.keras.Model(seq_input,embedded_vec).summary()
 
 def get_angles(pos, i, d_model):
   angle_rates = 1 / np.power(10000, (2 * (i//2)) / np.float32(d_model))
@@ -145,10 +130,11 @@ class FeatureExtract(tf.keras.Model):
         # reshape -> (batch size, 5, 5, 3) -> (batch size, 25, 2048)
         # size가 2048인 seq  25개
         x = self.reshape(x)
+        masked_img_feature = tf.reduce_mean(x,axis=2)
         # fully connected -> (batch size, 25, 2048) -> (batch size, 25, 128)
         # word embbeding 거친 128차원의 임베딩 텐서와 같은 크기
-        # x = self.dense(x)
-        return x
+        embedded_img = self.dense(x)
+        return embedded_img, masked_img_feature
 
 class MultiHeadAttention(tf.keras.layers.Layer):
     def __init__(self, d_model, num_heads):
@@ -273,15 +259,13 @@ class DecoderLayer(tf.keras.layers.Layer):
 
 
 class Encoder(tf.keras.layers.Layer):
-    def __init__(self, feature_extractor, num_layers, d_model, num_heads, dff,
+    def __init__(self, num_layers, d_model, num_heads, dff,
                  maximum_position_encoding, rate=0.1):
         super(Encoder, self).__init__()
 
         self.d_model = d_model
         self.num_layers = num_layers
 
-        #self.image_embedding = FeatureExtract(feature_extractor,d_model)
-        self.image_embedding = tf.keras.layers.Dense(d_model)
         self.pos_encoding = positional_encoding(maximum_position_encoding,
                                                 self.d_model)
 
@@ -292,7 +276,7 @@ class Encoder(tf.keras.layers.Layer):
 
     def call(self, x, training, mask):
         # adding embedding and position encoding.
-        x = self.image_embedding(x)  # (batch_size, input_seq_len, d_model)
+        # (batch_size, input_seq_len, d_model)
         seq_len = tf.shape(x)[1]
         x *= tf.math.sqrt(tf.cast(self.d_model, tf.float32))
         x += self.pos_encoding[:, :seq_len, :]
@@ -344,21 +328,23 @@ class Decoder(tf.keras.layers.Layer):
 
 
 class Transformer(tf.keras.Model):
-    def __init__(self, feature_extractor, num_layers, d_model, num_heads, dff,
+    def __init__(self, num_layers, d_model, num_heads, dff,
                  target_vocab_size, pe_input, pe_target, rate=0.1):
         super(Transformer, self).__init__()
 
-        self.encoder = Encoder(feature_extractor, num_layers, d_model, num_heads, dff, pe_input, rate)
+
+
+        self.encoder = Encoder(num_layers, d_model, num_heads, dff, pe_input, rate)
 
         self.decoder = Decoder(num_layers, d_model, num_heads, dff,
                                target_vocab_size, pe_target, rate)
 
         self.final_layer = tf.keras.layers.Dense(target_vocab_size)
 
-    def call(self, image, tar, training, enc_padding_mask,
-             look_ahead_mask, dec_padding_mask):
-        enc_output = self.encoder(image, training, enc_padding_mask)  # (batch_size, inp_seq_len, d_model)
+    def call(self, img_embedded, tar, training, enc_padding_mask,
+           look_ahead_mask, dec_padding_mask):
 
+        enc_output = self.encoder(img_embedded, training, enc_padding_mask)  # (batch_size, inp_seq_len, d_model)
         # dec_output.shape == (batch_size, tar_seq_len, d_model)
         dec_output, attention_weights = self.decoder(
             tar, enc_output, training, look_ahead_mask, dec_padding_mask)
@@ -404,7 +390,7 @@ train_loss = tf.keras.metrics.Mean(name='train_loss')
 train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
     name='train_accuracy')
 
-transformer = Transformer(EfficientNetB5,num_layers, d_model, num_heads, dff, target_char_size,
+transformer = Transformer(num_layers, d_model, num_heads, dff, target_char_size,
                           pe_input=target_char_size,
                           pe_target=target_char_size,
                           rate=dropout_rate)
@@ -427,6 +413,15 @@ def create_masks(inp, tar):
 
     return enc_padding_mask, combined_mask, dec_padding_mask
 
+
+def load_image(path):
+    img = tf.io.read_file(path)
+    img = tf.image.decode_jpeg(img, channels=3)
+    img = tf.image.resize(img, image_size)
+    img = tf.expand_dims(img, axis=0)
+    return img
+
+
 checkpoint_path = "./checkpoints/train"
 
 ckpt = tf.train.Checkpoint(transformer=transformer,
@@ -442,21 +437,21 @@ if ckpt_manager.latest_checkpoint:
 EPOCHS = 20
 
 train_step_signature = [
-    tf.TensorSpec(shape=(None, 25, 2048), dtype=tf.float32),
-    tf.TensorSpec(shape=(None, 25), dtype=tf.float32),
-    tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+    tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),
+    tf.TensorSpec(shape=(None, None), dtype=tf.float32),
+    tf.TensorSpec(shape=(None, None), dtype=tf.int16),
 ]
 
 
 @tf.function(input_signature=train_step_signature)
-def train_step(inp, inp_masked, tar):
+def train_step(features, masked_feature, tar):
     tar_inp = tar[:, :-1]
     tar_real = tar[:, 1:]
 
-    enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp_masked, tar_inp)
+    enc_padding_mask, combined_mask, dec_padding_mask = create_masks(masked_feature, tar_inp)
 
     with tf.GradientTape() as tape:
-        predictions, _ = transformer(inp, tar_inp,
+        predictions, _ = transformer(features, tar_inp,
                                      True,
                                      enc_padding_mask,
                                      combined_mask,
@@ -469,18 +464,10 @@ def train_step(inp, inp_masked, tar):
     train_loss(loss)
     train_accuracy(tar_real, predictions)
 
-train_batches = dataset.build_batch_pipeline('snukb', 'train',
-                                                buffer_size=BUFFER_SIZE,
-                                                batch_size=BATCH_SIZE,
-                                                functions_before_batch=[
-                                                    dataset_util.get_resize_image_func(image_size[1],image_size[0],
-                                                                                       is_normalize_pixel=False)],
-                                                functions_after_batch=[
-                                                    dataset_util.get_tokenize_label_func(tokenizer,
-                                                                                         is_sequence_padding=False,
-                                                                                         max_seq_length=MAX_SEQ_LENGTH)]
-                                                )
-
+train_batches = build_batch_pipeline(data_path=dataset_train_path,
+                                     tokenizer=tokenizer,
+                                     buffer_size=BUFFER_SIZE,
+                                     batch_size=BATCH_SIZE)
 
 
 for epoch in range(EPOCHS):
@@ -490,11 +477,14 @@ for epoch in range(EPOCHS):
     train_accuracy.reset_states()
 
     # inp -> portuguese, tar -> english
-    for (batch, (img, tar)) in enumerate(train_batches):
-        feature_extraction = FeatureExtract(EfficientNetB5, 128)
-        inp = feature_extraction(img)
-        inp_masked = np.mean(inp, dtype=int, axis=2)
-        train_step(inp, inp_masked, tar)
+    for (batch, (img_path, tar)) in enumerate(train_batches):
+
+        img = [load_image(path) for path in img_path.numpy()]
+        img = tf.concat(img,axis=0)
+        feature_extractor = FeatureExtract(EfficientNetB5, d_model)
+        features, masked_img_feature = feature_extractor(img)
+
+        train_step(features, masked_img_feature, tar)
 
         if batch % 50 == 0:
             print('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(
