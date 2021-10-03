@@ -23,12 +23,14 @@ def get_data_generator(path,tokenizer):
 def build_batch_pipeline(# data_path: str,
                          # tokenizer: Tokenizer,
                          dataset_name: str,
+                         train_percent: int,
                          buffer_size: int,
                          batch_size: int,
                          functions_before_batch: list = [],
                          functions_after_batch: list = []):
 
-    dataset = tfds.load(dataset_name, split='train', as_supervised=True)
+    train_dataset = tfds.load(dataset_name, split=f'train[:{train_percent}%]', as_supervised=True)
+    valid_dataset = tfds.load(dataset_name, split=f'train[{train_percent}%:]', as_supervised=True)
     '''
     data_path = Path(data_path)
     dataset = tf.data.Dataset.from_generator(get_data_generator(data_path, tokenizer),
@@ -36,13 +38,21 @@ def build_batch_pipeline(# data_path: str,
                                              output_shapes=(tf.TensorShape([]), tf.TensorShape([None]))
                                              )
     '''
-    before_batch = dataset.cache()
+    train_before_batch = train_dataset.cache()
     for f in functions_before_batch:
-        before_batch = before_batch.map(f, num_parallel_calls=tf.data.AUTOTUNE)
-    after_batch = before_batch.shuffle(buffer_size).batch(batch_size)
+        train_before_batch = train_before_batch.map(f, num_parallel_calls=tf.data.AUTOTUNE)
+    train_after_batch = train_before_batch.shuffle(buffer_size).batch(batch_size)
     for f in functions_after_batch:
-        after_batch = after_batch.map(f, num_parallel_calls=tf.data.AUTOTUNE)
-    batchs = after_batch.prefetch(tf.data.AUTOTUNE)
+        train_after_batch = train_after_batch.map(f, num_parallel_calls=tf.data.AUTOTUNE)
+    train_batchs = train_after_batch.prefetch(tf.data.AUTOTUNE)
 
-    return (batchs)
+    valid_before_batch = valid_dataset.cache()
+    for f in functions_before_batch:
+        valid_before_batch = valid_before_batch.map(f, num_parallel_calls=tf.data.AUTOTUNE)
+    valid_after_batch = valid_before_batch.shuffle(buffer_size).batch(batch_size)
+    for f in functions_after_batch:
+        valid_after_batch = valid_after_batch.map(f, num_parallel_calls=tf.data.AUTOTUNE)
+    valid_batchs = valid_after_batch.prefetch(tf.data.AUTOTUNE)
+
+    return (train_batchs), (valid_batchs)
 
