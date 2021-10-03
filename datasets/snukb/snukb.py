@@ -3,6 +3,8 @@ import tensorflow_datasets as tfds
 from pathlib import Path
 import csv
 from util import text_processing
+import tensorflow as tf
+from util import dataset_util
 
 # TODO(datasets): Markdown description  that will appear on the catalog page.
 _DESCRIPTION = """
@@ -20,9 +22,9 @@ _CITATION = """
 class Snukb(tfds.core.GeneratorBasedBuilder):
     """DatasetBuilder for datasets datasets."""
 
-    VERSION = tfds.core.Version('1.0.1')
+    VERSION = tfds.core.Version('1.0.4')
     RELEASE_NOTES = {
-        '1.0.1': 'Initial release.',
+        '1.0.4': 'Initial release.',
     }
 
     def _info(self) -> tfds.core.DatasetInfo:
@@ -35,7 +37,7 @@ class Snukb(tfds.core.GeneratorBasedBuilder):
                 # These are the features of your datasets like images, labels ...
                 'image_describe': tfds.features.Text(),
                 'image': tfds.features.Image(),
-                'label': tfds.features.Text(),
+                'label': tfds.features.Tensor(shape=(None,),dtype=tf.int16),
             }),
             # If there's a common (input, target) tuple from the
             # features, specify them here. They'll be used if
@@ -62,12 +64,14 @@ class Snukb(tfds.core.GeneratorBasedBuilder):
 
         label_path = path / f'{path.parts[-1]}.csv'
 
+        tokenizer = text_processing.HangulTokenizer()
+        max_length = dataset_util.get_max_len_label_tokens(label_path)
+
         with label_path.open() as f:
             for row in csv.DictReader(f):
                 image_id = row['index']
-                print(row['label'])
                 yield image_id, {
                     'image_describe': '',
                     'image': path / 'images' / f'{image_id}.jpg',
-                    'label': row['label']
+                    'label': tokenizer.tokenize(row['label'], max_length=max_length)
                 }

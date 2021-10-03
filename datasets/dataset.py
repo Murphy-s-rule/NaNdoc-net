@@ -20,19 +20,22 @@ def get_data_generator(path,tokenizer):
                 yield (image_path, label)
     return data_generator
 
-def build_batch_pipeline(data_path: str,
-                         tokenizer: Tokenizer,
+def build_batch_pipeline(# data_path: str,
+                         # tokenizer: Tokenizer,
+                         dataset_name: str,
                          buffer_size: int,
                          batch_size: int,
                          functions_before_batch: list = [],
                          functions_after_batch: list = []):
 
+    dataset = tfds.load(dataset_name, split='train', as_supervised=True)
+    '''
     data_path = Path(data_path)
     dataset = tf.data.Dataset.from_generator(get_data_generator(data_path, tokenizer),
                                              output_types=(tf.string, tf.int16),
                                              output_shapes=(tf.TensorShape([]), tf.TensorShape([None]))
                                              )
-
+    '''
     before_batch = dataset.cache()
     for f in functions_before_batch:
         before_batch = before_batch.map(f, num_parallel_calls=tf.data.AUTOTUNE)

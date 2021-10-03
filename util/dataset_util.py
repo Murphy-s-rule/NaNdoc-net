@@ -3,7 +3,7 @@ import tensorflow_text as tftx
 from util import text_processing
 import csv
 
-def get_resize_image_func(height,width,is_normalize_pixel,normalization_value=None):
+def get_resize_image_func(size,is_normalize_pixel,normalization_value=None):
     """
     The get_resize_image_func returns the closer function which resize image tensor in dataset pipeline.
 
@@ -23,7 +23,7 @@ def get_resize_image_func(height,width,is_normalize_pixel,normalization_value=No
             normalize_pixel = get_normalize_pixel_func(normalization_value)
             image, _ = normalize_pixel(image, None)
         # Resize the image
-        image = tf.image.resize(image, (height,width))
+        image = tf.image.resize(image, size)
 
         return image, label
 
