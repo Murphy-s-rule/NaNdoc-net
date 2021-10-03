@@ -81,7 +81,7 @@ def train(buffer_size=2000, batch_size=32, epochs=50,
     train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
         name='train_accuracy')
 
-    transformer = NaNdocNet(patch_size, num_layers, d_model, num_heads, dff, target_char_size,
+    nandocnet = NaNdocNet(patch_size, num_layers, d_model, num_heads, dff, target_char_size,
                               pe_input=image_seq_len + 1,
                               pe_target=target_char_size,
                               rate=dropout_rate)
@@ -100,20 +100,20 @@ def train(buffer_size=2000, batch_size=32, epochs=50,
         enc_padding_mask, combined_mask, dec_padding_mask = model_util.create_masks(img_mask_base, tar_inp)
 
         with tf.GradientTape() as tape:
-            predictions, _ = transformer(img, tar_inp,
+            predictions, _ = nandocnet(img, tar_inp,
                                          True,
                                          enc_padding_mask,
                                          combined_mask,
                                          dec_padding_mask)
             loss = loss_function(tar_real, predictions)
 
-        gradients = tape.gradient(loss, transformer.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, transformer.trainable_variables))
+        gradients = tape.gradient(loss, nandocnet.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, nandocnet.trainable_variables))
 
         train_loss(loss)
         train_accuracy(tar_real, predictions)
 
-    ckpt = tf.train.Checkpoint(transformer=transformer,
+    ckpt = tf.train.Checkpoint(transformer=nandocnet,
                                optimizer=optimizer)
 
     ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=5)
@@ -164,9 +164,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     image_size = tuple(args.image_resize)
     patch_size = tuple(args.patch_size)
-    d_model = patch_size[0] * patch_size[1] * 3
 
     train(buffer_size=args.buffer_size, batch_size=args.batch_size, epochs = args.epochs,
           image_size = image_size, patch_size = patch_size, num_layers = args.num_layers,
-          d_model = d_model, dff = args.dff, num_heads = args.num_heads,
+          d_model = args.d_model, dff = args.dff, num_heads = args.num_heads,
           dropout_rate = args.dropout_rate, dataset_name = args.dataset_name, checkpoint_path = args.checkpoint_path)
